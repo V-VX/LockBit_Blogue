@@ -1,0 +1,37 @@
+---
+import { getCollection, getEntries, getEntry, getEntryBySlug } from 'astro:content';
+import Layout from "../../layouts/Layout.astro";
+import Post from "../../components/Post.astro";
+import Markdown from "../../components/misc/Markdown.astro";
+
+export async function getStaticPaths() {
+    // const post = await getEntries('posts', ({ data }) => {
+    //    return import.meta.env.PROD ? data.draft !== true : true;
+
+    // });
+    const post = await getCollection('posts', ({ data }) => {
+        return import.meta.env.PROD ? data.draft !== true : true;
+
+    });
+    
+    return post.map(entry => ({
+        // params: { slug: p.slug }, props: {p},
+        params: { slug: entry.slug }, props: { entry },
+
+    }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await entry.render();
+// const { Content } = await page.render();
+// const Content =  await post.render();
+---
+
+<Layout title={ "fuck you" }>
+    <Post page={ entry }>
+        <!-- <h1>{entry.data.title}</h1>
+        <p>{entry.data}</p> -->
+        <Markdown class="some ">
+            <Content />
+        </Markdown>
+    </Post>
