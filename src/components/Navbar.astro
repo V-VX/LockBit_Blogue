@@ -1,0 +1,34 @@
+---
+import ToggleTheme from "./misc/ToggleTheme.astro"
+---
+---
+<div class="header">
+    <div class="container">
+        <div></div>
+        <div class="container-header"></div>
+        <ToggleTheme />
+    </div>
+</div>
+
+<style is:global>
+    .header {
+        box-shadow: 0px 7px 70px rgba(0, 0, 0, 0.04);
+        /* height: 180px; */
+        padding-right: 10px;
+        padding-left: 10px;
+    }
+    .container-header {
+        padding-left: 35px;
+    }
+    @media (min-width: 1180px) {
+        .container {
+            max-width: 1450px;
+        }
+    }
+    @media (min-width: 1200px) and (max-width: 1730px) {
+        .container {
+            max-width: 100%;
+        }
+    }
+</style>
+
