@@ -1,6 +1,6 @@
 ---
 import { getCollection, getEntries, getEntry, getEntryBySlug } from 'astro:content';
-import Layout from "../../layouts/Layout.astro";
+import Main from "../../layouts/Main.astro";
 import Post from "../../components/Post.astro";
 import Markdown from "../../components/misc/Markdown.astro";
 
@@ -27,11 +27,16 @@ const { Content } = await entry.render();
 // const Content =  await post.render();
 ---
 
-<Layout title={ "fuck you" }>
-    <Post page={ entry }>
+<Main title={ "fuck you" }>
+    <Post
+        title={ entry.data.title }
+        uploaded_at={ entry.data.uploaded_at }
+        updated_at={ entry.data.updated_at }
+        >
         <!-- <h1>{entry.data.title}</h1>
         <p>{entry.data}</p> -->
         <Markdown class="some ">
             <Content />
         </Markdown>
     </Post>
+</Main>
