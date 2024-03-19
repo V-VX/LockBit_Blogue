@@ -1,0 +1,12 @@
+---
+import Post from "./Post.astro";
+
+const { page } = Astro.params;;
+---
+<div>
+    <Post
+        title={page.data.title}
+        date={page.date}
+        content={page.content}
+    />
+</div>
