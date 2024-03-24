@@ -23,13 +23,6 @@
 	if (v && iv) {
 		data.title = decrypt(data.title, v, iv);
 	}
-	console.log(v)
-	console.log(iv)
-
-	// if (url.searchParams.has('v')) {
-	// }
-
-    console.log(data)
 </script>
 
 <Post title={data.title} uploaded_at={data.uploaded_at} updated_at={data.updated_at} />
