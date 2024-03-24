@@ -1,4 +1,4 @@
-<script>
+<!-- <script>
 	import Counter from './Counter.svelte';
 	import welcome from '$lib/images/svelte-welcome.webp';
 	import welcome_fallback from '$lib/images/svelte-welcome.png';
@@ -56,4 +56,26 @@
 		top: 0;
 		display: block;
 	}
-</style>
+</style> -->
+
+<!-- src/routes/+page.svelte -->
+
+<script lang="ts">
+	import type { PageServerData } from './$types';
+
+	export let data: PageServerData;
+</script>
+
+<div class="container">
+	<h1>Markdown Blog</h1>
+
+	<ul class="links">
+		{#each data.posts as post}
+		<li>
+			<a href={`blog/${post.slug}`}>{post.title}</a>
+		</li>
+		{/each}
+	</ul>
+</div>
+
+
