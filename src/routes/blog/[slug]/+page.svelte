@@ -1,15 +1,14 @@
 <script lang=ts>
 	// /** @type {import('./$types').PageData} */
 	import type { PageServerData } from './$types';
+	// import type { PageData } from './$types';
 	import { page } from '$app/stores';
 	import * as crypto from 'crypto';
-	import Post from '$lib/Post.svelte';
+	import Post from '../../Post.svelte';
 
     export function decrypt(encryptedText: string, key: string, iv: string, algorithm = "aes-256-cbc"): string {
         const _iv = crypto.createHash('sha256').update(iv).digest().subarray(0, 16);
         const _key = crypto.createHash('sha256').update(key).digest();
-		console.log(_iv)
-		console.log(_key)
         const decipher = crypto.createDecipheriv(algorithm, _key, _iv);
         let decrypted = decipher.update(encryptedText, 'hex', 'utf-8');
         decrypted += decipher.final('utf-8');
@@ -23,9 +22,13 @@
 	if (v && iv) {
 		data.title = decrypt(data.title, v, iv);
 	}
+	console.log("hello");
+	console.log(data.content);
+	// console.log(data);
 </script>
 
-<Post title={data.title} uploaded_at={data.uploaded_at} updated_at={data.updated_at} />
+<Post title={data.title} uploaded_at={data.uploaded_at} updated_at={data.updated_at} content={data.content}/>
+<!-- <Post title={data.title} uploaded_at={data.uploaded_at} updated_at={data.updated_at}/> -->
 
 <!-- {#if data.posts}
 	<h1>{data.title}</h1>
