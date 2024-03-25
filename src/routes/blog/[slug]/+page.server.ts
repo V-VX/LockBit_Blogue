@@ -17,15 +17,31 @@ export const prerender = true;
 // }
 export const load: PageServerLoad = async ({ params }) => {
     const { slug } = params;
+    // const ps = await import(`../../../lib/posts/${params.slug}.md`)
+
 
     // get post with metadata
     const post = posts.find((post) => slug === post.slug);
+    // post?.content.render();.default
+    // const content = await import(`../md-files/${post.slug}.md`)
+    // const _post = {
+    //     title: post.title,
+    //     uploaded_at: post.uploaded_at,
+    //     updated_at: post.updated_at,
+    //     content: ps.default.render().html,
+    //     meta: ps.metadata
+    // }
+    // console.log("content")
+    // console.log(ps.default.render().html)
+    // console.log("content post")
+    // console.log(_post)
+
 
     if (!post) {
         throw error(404, 'Fuck You!');
     }
     // const title = post.title;
-    console.log(post.key)
+    console.log(post)
     // lb.appendYaml(post.slug, post);
     // lb.store();
     // console.log(lb._yml);
@@ -36,6 +52,7 @@ export const load: PageServerLoad = async ({ params }) => {
     //     // post,
     //     post
     // };
+    // return _post
     return post
 };
 
