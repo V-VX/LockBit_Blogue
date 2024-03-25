@@ -17,6 +17,7 @@ export interface Post {
     iv: string;
     uploaded_at: string;
     updated_at: string;
+    content: string
 }
 
 // Get all posts and add metadata
@@ -24,8 +25,12 @@ export const posts = Object.entries(
 import.meta.glob<GlobEntry>('/src/lib/posts/**/*.md', { eager: true })
 )
 .map(([filepath, globEntry]) => {
+    // console.log("content")
+    // console.log(globEntry.default.render())
+    // console.log("content end")
     return {
     ...globEntry.metadata,
+    content: globEntry.default.render().html,
 
     // generate the slug from the file path
     slug: parse(filepath).name,
@@ -39,6 +44,8 @@ import.meta.glob<GlobEntry>('/src/lib/posts/**/*.md', { eager: true })
     let encrypted
     // post.slug = lb.encrypt(post.slug);
     post.title = lb.encrypt(post.title);
+    // post.content = lb.encrypt(post.content);
+    // const { html } = module.default.render();
     return {
     ...post,
     next: allPosts[index - 1] || 0,
