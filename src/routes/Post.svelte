@@ -5,6 +5,8 @@
     export let title: String;
     export let uploaded_at: String;
     export let updated_at: String;
+    // export let content: ConstructorOfATypedSvelteComponent;
+    export let content: String;
 
 </script>
 
@@ -13,7 +15,8 @@
     <div class="post-content">
         <div class="post-title">{ title }</div>
         <div class="post-main">
-            <slot />
+            <!-- <svelte:component this={content} /> -->
+            {@html content}
         </div>
         <div class="dates">
             <div class="uploaded-at">
