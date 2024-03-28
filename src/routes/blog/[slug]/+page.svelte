@@ -6,6 +6,7 @@
 	import * as crypto from 'crypto';
 	import Post from '../../Post.svelte';
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 
 	export function matrix_render(text: string): string {
 		let chars = [...text];
@@ -27,6 +28,7 @@
 	}
 
     export function decrypt(encryptedText: string, key: string, iv: string, algorithm = "aes-256-cbc"): string {
+		// return window.crypto.subtle.decrypt({ name: "AES-CBC", iv }, key, encryptedText);
         const _iv = crypto.createHash('sha256').update(iv).digest().subarray(0, 16);
         const _key = crypto.createHash('sha256').update(key).digest();
         const decipher = crypto.createDecipheriv(algorithm, _key, _iv);
@@ -38,12 +40,9 @@
 	export function decrypt_html(body: string, key: string, iv: string, algorithm = "aes-256-cbc"): string {
         const regex = /(<\/?[^>]+>)|([^<>]+)/g;
         return body.replace(regex, (match, tag, child) => {
-            // p1はHTMLタグ、p2はタグ外のテキスト
             if (tag) {
-                // HTMLタグはそのまま返す
                 return tag;
             } else if (child) {
-                // テキストのみを暗号化する
                 return decrypt(child, key, iv, algorithm);
             }
             return match;
@@ -52,45 +51,51 @@
 
 	export let data: PageServerData;
 	const url = $page.url;
-	export const v = url.searchParams.get('v');
-	export const iv = url.searchParams.get('iv');
+	export const v = $page.url.searchParams.get('v');
+	export const iv = $page.url.searchParams.get('iv');
+	let decrypted: string;
+	// let original = data.title
+	// let chars = [...data.title];
 
-	if (v && iv) {
-		const decrypted = decrypt(data.title, v, iv);
-		let chars = [...data.title];
-		setInterval(() => {
-			const n = Math.floor(Math.random() * (126 - 33 + 1)) + 33;
-			let char = String.fromCharCode(n);
-			data.title = char;
-			// console.log(chars.join(''));
-			// return chars.join(''); 
-		}, 1000);
-		data.content = decrypt_html(data.content, v, iv);
-	}
-	let original = data.title
-	let chars = [...data.title];
+	// if (v && iv) {
+	// 	decrypted = decrypt(data.title, v, iv);
+	// 	original = decrypted;
+	// 	chars = [...decrypted];
+	// 	console.log(decrypted);
+	// 	data.title = decrypted;
+	// 	data.content = decrypt_html(data.content, v, iv);
+	// }
+	let original = v && iv ? decrypt(data.title, v, iv) : data.title;
+	let chars = v && iv ? [...decrypt(data.title, v, iv)] : [...data.title];
+	let isTransformed = new Array(chars.length).fill(false);
+	console.log(original);
 
-	onMount(() => {
-		let timer = setInterval(() => {
-			let chars = [...data.title]; // data.titleを文字の配列に変換
-			for (let i = 0; i < chars.length; i++) {
-				const n = Math.floor(Math.random() * (126 - 33 + 1)) + 33;
-				const rnd = String.fromCharCode(n);
-				chars[i] = rnd; // 各文字をランダムな文字に更新
-				data.title = chars.join(''); // 更新された文字配列を文字列に戻す
-			}
-			data.title = chars.join(''); // 更新された文字配列を文字列に戻す
-		}, 100); // 100ミリ秒ごとに更新
 
-		// return () => {
-		// 	clearInterval(timer); // コンポーネントが破棄される時にタイマーをクリア
-		// };
-		setTimeout(() => {
-			data.title = original; // 元のタイトルに戻す
-			console.log(original);
-			clearInterval(timer); // ランダム変換の処理を停止
-			return
-		}, 1000);
+	let m = onMount(() => {
+		console.log('mounted');
+		chars.forEach((_, index) => {
+			let randomTime = Math.floor(Math.random() * (5000 - 3000 + 1)) + 1000;
+
+			let timer = setInterval(() => {
+				if (!isTransformed[index]) {
+					const n = Math.floor(Math.random() * (126 - 33 + 1)) + 33;
+					const rnd = String.fromCharCode(n);
+					chars[index] = rnd;
+					data.title = chars.join('');
+				}
+			}, 100);
+
+			setTimeout(() => {
+				clearInterval(timer);
+				isTransformed[index] = true;
+				chars[index] = original[index];
+				data.title = chars.join('');
+
+				if (isTransformed.every(val => val)) {
+					chars[index] = original[index];
+				}
+			}, randomTime);
+		});
 	});
 </script>
 
