@@ -3,20 +3,18 @@ import { getCollection } from 'astro:content';
 import Main from "../../layouts/Main.astro";
 import Post from "../../components/Post.astro";
 import Markdown from "../../components/misc/Markdown.astro";
-import { PostContent } from '../../components/PostContent';
 
 export async function getStaticPaths() {
-    const post = await getCollection('posts', ({ data }) => {
+    const posts = await getCollection('posts', ({ data }) => {
         return import.meta.env.PROD ? data.draft !== true : true;
     });
 
-    return post.map(entry => ({
+    return posts.map(entry => ({
         params: { slug: entry.slug }, props: { entry },
     }));
 }
 
 const { entry } = Astro.props;
-const isProtected = entry.data.is_protected === true;
 const { Content } = await entry.render();
 ---
 
@@ -26,12 +24,8 @@ const { Content } = await entry.render();
         uploaded_at={ entry.data.uploaded_at }
         updated_at={ entry.data.updated_at }
         >
-        {isProtected ? (
-            <PostContent client:load ciphertext={entry.body} />
-        ) : (
-            <Markdown class="some ">
-                <Content />
-            </Markdown>
-        )}
+        <Markdown class="some ">
+            <Content />
+        </Markdown>
     </Post>
 </Main>

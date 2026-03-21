@@ -19,7 +19,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import matter from 'gray-matter';
-import { encrypt } from '../src/utils/crypto.js';
+import { encryptBody } from '../src/utils/crypto.js';
 
 const SRC_DIR = new URL('../src/content/posts-src', import.meta.url).pathname;
 const OUT_DIR = new URL('../src/content/posts', import.meta.url).pathname;
@@ -47,7 +47,7 @@ const encryptPost = async (
     return;
   }
 
-  const encryptedBody = await encrypt(content, passphrase);
+  const encryptedBody = await encryptBody(content, passphrase);
 
   const outContent = matter.stringify(encryptedBody, {
     ...data,

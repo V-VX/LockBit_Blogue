@@ -103,7 +103,10 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
 </style>
 
 <script>
+    import { decrypt } from '../utils/crypto';
     import { animateElement } from '../utils/animation';
+
+    const key = new URLSearchParams(window.location.search).get('key');
 
     // Title
     const titleEl = document.querySelector<HTMLElement>('.post-title');
@@ -112,20 +115,29 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
         animateElement(titleEl);
     }
 
-    // Body — plain posts are server-rendered; encrypted posts are hydrated via
-    // client:load, so content may not exist yet. MutationObserver handles both.
+    // Body — content is always server-rendered via Markdown component.
+    // If ?key= is present, attempt to decrypt each text node in place.
+    // A wrong key produces garbled output; no error is raised.
     const postMain = document.querySelector<HTMLElement>('.post-main');
     if (postMain) {
-        if (postMain.textContent?.trim()) {
-            animateElement(postMain);
-        } else {
-            const observer = new MutationObserver((_mutations, obs) => {
-                if (postMain.textContent?.trim()) {
-                    obs.disconnect();
-                    animateElement(postMain);
+        if (key) {
+            const walker = document.createTreeWalker(postMain, NodeFilter.SHOW_TEXT);
+            const nodes: Text[] = [];
+            let n: Node | null;
+            while ((n = walker.nextNode())) nodes.push(n as Text);
+
+            await Promise.all(nodes.map(async (node) => {
+                const value = node.textContent?.trim();
+                if (value) {
+                    try {
+                        node.textContent = await decrypt(value, key);
+                    } catch {
+                        // Wrong key or not a ciphertext — leave as-is.
+                    }
                 }
-            });
-            observer.observe(postMain, { childList: true, subtree: true });
+            }));
         }
+
+        animateElement(postMain);
     }
 </script>

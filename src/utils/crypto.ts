@@ -80,6 +80,61 @@ const deriveKey = async (
 };
 
 // ---------------------------------------------------------------------------
+// Structured body tokenizer (sync, shared by encryptBody / decryptBody)
+// ---------------------------------------------------------------------------
+
+type Token =
+  | { readonly type: 'passthrough'; readonly value: string }
+  | { readonly type: 'text'; readonly value: string };
+
+// Markdown line-start prefixes that are structural, not content.
+const MD_LINE_PREFIX_RE =
+  /^(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s*|={3,}|-{3,}|\*{3,}|`{3,}[^\n]*|\t|[ ]{4})/;
+
+// Matches any HTML / XML tag (opening, closing, self-closing).
+const HTML_TAG_SOURCE = '<[^>]*>';
+
+const tokenizeLine = (line: string): readonly Token[] => {
+  const tokens: Token[] = [];
+
+  const prefixMatch = line.match(MD_LINE_PREFIX_RE);
+  const prefix = prefixMatch?.[0] ?? '';
+  const rest = line.slice(prefix.length);
+
+  if (prefix) tokens.push({ type: 'passthrough', value: prefix });
+
+  let cursor = 0;
+  const tagRe = new RegExp(HTML_TAG_SOURCE, 'g');
+  let match: RegExpExecArray | null;
+
+  while ((match = tagRe.exec(rest)) !== null) {
+    if (match.index > cursor) {
+      tokens.push({ type: 'text', value: rest.slice(cursor, match.index) });
+    }
+    tokens.push({ type: 'passthrough', value: match[0] });
+    cursor = match.index + match[0].length;
+  }
+
+  if (cursor < rest.length) {
+    tokens.push({ type: 'text', value: rest.slice(cursor) });
+  }
+
+  return tokens;
+};
+
+const tokenize = (text: string): readonly Token[] => {
+  const lines = text.split('\n');
+  const tokens: Token[] = [];
+
+  lines.forEach((line, i) => {
+    if (i > 0) tokens.push({ type: 'passthrough', value: '\n' });
+    tokens.push(...tokenizeLine(line));
+  });
+
+  return tokens;
+};
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -137,6 +192,46 @@ export const decrypt = async (
   }
 
   return new TextDecoder().decode(plainBuffer);
+};
+
+/**
+ * Encrypts a markdown/HTML document token-by-token.
+ * Markdown line-start prefixes and HTML tags are passed through unchanged;
+ * only text content is encrypted.
+ */
+export const encryptBody = async (
+  plaintext: string,
+  passphrase: string,
+): Promise<string> => {
+  const tokens = tokenize(plaintext);
+  const parts = await Promise.all(
+    tokens.map(token =>
+      token.type === 'text' && token.value.trim()
+        ? encrypt(token.value, passphrase)
+        : Promise.resolve(token.value),
+    ),
+  );
+  return parts.join('');
+};
+
+/**
+ * Decrypts a body produced by `encryptBody`.
+ * Uses the same tokenizer so structural tokens are skipped;
+ * each text token (a base64 ciphertext) is decrypted in place.
+ */
+export const decryptBody = async (
+  body: string,
+  passphrase: string,
+): Promise<string> => {
+  const tokens = tokenize(body);
+  const parts = await Promise.all(
+    tokens.map(token =>
+      token.type === 'text' && token.value.trim()
+        ? decrypt(token.value, passphrase)
+        : Promise.resolve(token.value),
+    ),
+  );
+  return parts.join('');
 };
 
 export class DecryptionError extends Error {
