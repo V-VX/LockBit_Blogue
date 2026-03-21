@@ -9,7 +9,7 @@ const postsCollection = defineCollection({
     updated_at: z.date(),
     author: z.string(),
     draft: z.boolean().optional(),
-    // is_protected: z.boolean().optional(),
+    is_protected: z.boolean().optional(),
     // image: z.string().optional(),
   }),
 })

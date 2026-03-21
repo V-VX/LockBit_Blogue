@@ -1,30 +1,23 @@
 ---
-import { getCollection, getEntries, getEntry, getEntryBySlug } from 'astro:content';
+import { getCollection } from 'astro:content';
 import Main from "../../layouts/Main.astro";
 import Post from "../../components/Post.astro";
 import Markdown from "../../components/misc/Markdown.astro";
+import { PostContent } from '../../components/PostContent';
 
 export async function getStaticPaths() {
-    // const post = await getEntries('posts', ({ data }) => {
-    //    return import.meta.env.PROD ? data.draft !== true : true;
-
-    // });
     const post = await getCollection('posts', ({ data }) => {
         return import.meta.env.PROD ? data.draft !== true : true;
-
     });
-    
-    return post.map(entry => ({
-        // params: { slug: p.slug }, props: {p},
-        params: { slug: entry.slug }, props: { entry },
 
+    return post.map(entry => ({
+        params: { slug: entry.slug }, props: { entry },
     }));
 }
 
 const { entry } = Astro.props;
+const isProtected = entry.data.is_protected === true;
 const { Content } = await entry.render();
-// const { Content } = await page.render();
-// const Content =  await post.render();
 ---
 
 <Main title={ "fuck you" }>
@@ -33,10 +26,12 @@ const { Content } = await entry.render();
         uploaded_at={ entry.data.uploaded_at }
         updated_at={ entry.data.updated_at }
         >
-        <!-- <h1>{entry.data.title}</h1>
-        <p>{entry.data}</p> -->
-        <Markdown class="some ">
-            <Content />
-        </Markdown>
+        {isProtected ? (
+            <PostContent client:load ciphertext={entry.body} />
+        ) : (
+            <Markdown class="some ">
+                <Content />
+            </Markdown>
+        )}
     </Post>
 </Main>

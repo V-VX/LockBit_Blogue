@@ -1,54 +1,53 @@
-# Astro Starter Kit: Basics
+# LockBit Blogue
 
-```sh
-npm create astro@latest -- --template basics
+An Astro 4 static blog with client-side encrypted content. Posts are encrypted at build time and decrypted in the browser using a passphrase passed via URL query parameter.
+
+## How it works
+
+1. Plain Markdown posts live in `src/content/posts-src/` (not committed)
+2. `pnpm encrypt` encrypts each post body with **AES-256-GCM + PBKDF2-SHA256** and writes the result to `src/content/posts/`
+3. Only encrypted posts are deployed
+4. Readers access posts via `?key=<passphrase>` — the browser decrypts and renders the content client-side
+
+Encryption uses `globalThis.crypto.subtle` (Web Crypto API) on both sides, guaranteeing identical behaviour in Node.js 18+ and modern browsers.
+
+## Commands
+
+| Command | Action |
+|---|---|
+| `pnpm install` | Install dependencies |
+| `pnpm dev` | Start dev server at `localhost:4321` |
+| `pnpm encrypt` | Encrypt posts from `posts-src/` → `posts/` |
+| `pnpm build` | Encrypt + type-check + build to `./dist/` |
+| `pnpm preview` | Preview production build locally |
+
+## Setup
+
+```bash
+# 1. Install dependencies
+pnpm install
+
+# 2. Set your encryption passphrase
+echo "ENCRYPT_KEY=your-passphrase" > .env
+
+# 3. Add plain posts to src/content/posts-src/
+# 4. Build
+pnpm build
 ```
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/withastro/astro/tree/latest/examples/basics)
-[![Open with CodeSandbox](https://assets.codesandbox.io/github/button-edit-lime.svg)](https://codesandbox.io/p/sandbox/github/withastro/astro/tree/latest/examples/basics)
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/withastro/astro?devcontainer_path=.devcontainer/basics/devcontainer.json)
+## Accessing encrypted posts
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Append `?key=<passphrase>` to any post URL:
 
-![just-the-basics](https://github.com/withastro/astro/assets/2244813/a0a5533c-a856-4198-8470-2d67b1d7c554)
-
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
-/
-├── public/
-│   └── favicon.svg
-├── src/
-│   ├── components/
-│   │   └── Card.astro
-│   ├── layouts/
-│   │   └── Layout.astro
-│   └── pages/
-│       └── index.astro
-└── package.json
+```
+https://yoursite.com/posts/my-post?key=your-passphrase
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Tech stack
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+- [Astro 4](https://astro.build) — static site framework
+- [React 18](https://react.dev) — client-side interactivity
+- [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) — AES-256-GCM encryption
+- [marked](https://marked.js.org) — client-side Markdown rendering
+- [DOMPurify](https://github.com/cure53/DOMPurify) — XSS sanitisation
+- TypeScript 5 (strict)

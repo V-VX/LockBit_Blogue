@@ -19,3 +19,8 @@ pnpm-debug.log*
 
 # macOS-specific files
 .DS_Store
+
+# plain (unencrypted) post sources — never commit these
+src/content/posts-src/
+AGENTS.md
+CLAUDE.md

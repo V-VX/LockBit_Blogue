@@ -1,16 +1,16 @@
 ---
 interface Props {
-    class: string;
-    entry: any;
+    class?: string;
+    entry?: any;
     title: string;
-    encrypt_title: string;
-    url: string;
+    encrypt_title?: string;
+    url?: string;
     uploaded_at: Date;
     updated_at: Date;
-    author: string;
-    draft: boolean;
-    is_protected: boolean;
-    image: string;
+    author?: string;
+    draft?: boolean;
+    is_protected?: boolean;
+    image?: string;
 }
 
 const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft, is_protected, image } = Astro.props;
@@ -18,7 +18,7 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
 <div class="post-info">
     <div class="post-img"></div>
     <div class="post-content">
-        <div class="post-title">{ title }</div>
+        <div class="post-title" data-title={ title }>{ title }</div>
         <div class="post-main">
             <slot />
         </div>
@@ -102,3 +102,30 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
     }
 </style>
 
+<script>
+    import { animateElement } from '../utils/animation';
+
+    // Title
+    const titleEl = document.querySelector<HTMLElement>('.post-title');
+    if (titleEl) {
+        titleEl.textContent = titleEl.dataset.title ?? titleEl.textContent ?? '';
+        animateElement(titleEl);
+    }
+
+    // Body — plain posts are server-rendered; encrypted posts are hydrated via
+    // client:load, so content may not exist yet. MutationObserver handles both.
+    const postMain = document.querySelector<HTMLElement>('.post-main');
+    if (postMain) {
+        if (postMain.textContent?.trim()) {
+            animateElement(postMain);
+        } else {
+            const observer = new MutationObserver((_mutations, obs) => {
+                if (postMain.textContent?.trim()) {
+                    obs.disconnect();
+                    animateElement(postMain);
+                }
+            });
+            observer.observe(postMain, { childList: true, subtree: true });
+        }
+    }
+</script>
