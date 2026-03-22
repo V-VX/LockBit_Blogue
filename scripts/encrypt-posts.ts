@@ -6,17 +6,17 @@
  * encrypts each post body with AES-256-GCM + PBKDF2-SHA256,
  * and writes encrypted Markdown files to `src/content/posts/`.
  *
- * The frontmatter is preserved as-is with `is_protected: true` added.
- * The encrypted body (base64) replaces the original body.
+ * Each source post must declare its own passphrase via a `key` frontmatter
+ * field. The field is stripped from the output so it is never published.
  *
  * Usage:
- *   ENCRYPT_KEY=<passphrase> pnpm encrypt
+ *   pnpm encrypt
  *   (runs automatically as a prebuild step via package.json)
  *
  * Requires Node.js 18+ (globalThis.crypto.subtle).
  */
 
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { access, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import matter from 'gray-matter';
 import { encryptBody } from '../src/utils/crypto.js';
@@ -24,43 +24,46 @@ import { encryptBody } from '../src/utils/crypto.js';
 const SRC_DIR = new URL('../src/content/posts-src', import.meta.url).pathname;
 const OUT_DIR = new URL('../src/content/posts', import.meta.url).pathname;
 
-const getPassphrase = (): string => {
-  const key = process.env['ENCRYPT_KEY'];
-  if (!key) {
-    throw new Error(
-      'ENCRYPT_KEY environment variable is not set.\n' +
-      'Set it in your .env file or export it before running this script.',
-    );
-  }
-  return key;
-};
+const fileExists = (path: string): Promise<boolean> =>
+  access(path).then(() => true, () => false);
 
-const encryptPost = async (
-  filename: string,
-  passphrase: string,
-): Promise<void> => {
+const encryptPost = async (filename: string): Promise<boolean> => {
+  const outPath = join(OUT_DIR, filename);
+
+  if (await fileExists(outPath)) {
+    console.log(`[skip] ${filename} — already exists`);
+    return false;
+  }
+
   const raw = await readFile(join(SRC_DIR, filename), 'utf-8');
   const { data, content } = matter(raw);
 
   if (!content.trim()) {
     console.warn(`[skip] ${filename} — empty body`);
-    return;
+    return false;
   }
 
-  const encryptedBody = await encryptBody(content, passphrase);
+  const postKey = String(data['key'] ?? '').trim();
+  if (!postKey) {
+    throw new Error(`[error] ${filename} — missing or empty "key" field in frontmatter`);
+  }
+
+  const encryptedBody = await encryptBody(content, postKey);
+
+  // Strip "key" from output frontmatter — it must never be published.
+  const { key: _omit, ...outputData } = data;
 
   const outContent = matter.stringify(encryptedBody, {
-    ...data,
+    ...outputData,
     is_protected: true,
   });
 
-  await writeFile(join(OUT_DIR, filename), outContent, 'utf-8');
+  await writeFile(outPath, outContent, 'utf-8');
   console.log(`[ok]   ${filename}`);
+  return true;
 };
 
 const run = async (): Promise<void> => {
-  const passphrase = getPassphrase();
-
   const files = (await readdir(SRC_DIR)).filter(
     (f: string) => extname(f) === '.md',
   );
@@ -70,8 +73,10 @@ const run = async (): Promise<void> => {
     return;
   }
 
-  await Promise.all(files.map((f: string) => encryptPost(f, passphrase)));
-  console.log(`\nEncrypted ${files.length} post(s) → src/content/posts/`);
+  const results = await Promise.all(files.map((f: string) => encryptPost(f)));
+  const encrypted = results.filter(Boolean).length;
+  const skipped = files.length - encrypted;
+  console.log(`\nDone: ${encrypted} encrypted, ${skipped} skipped → src/content/posts/`);
 };
 
 run().catch((err: unknown) => {

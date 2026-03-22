@@ -25,11 +25,11 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
         <div class="dates">
             <div class="uploaded-at">
                 <div class="uploaded-at-label">Uploaded:</div>
-                <div class="uploaded-at-utc">{ uploaded_at }</div>
+                <div class="uploaded-at-utc" data-date={ uploaded_at.toISOString() }></div>
             </div>
             <div class="updated-at">
                 <div class="updated-at-label">Updated:</div>
-                <div class="updated-at-utc">{ updated_at }</div>
+                <div class="updated-at-utc" data-date={ updated_at.toISOString() }></div>
             </div>
         </div>
     </div>
@@ -107,6 +107,18 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
     import { animateElement } from '../utils/animation';
 
     const key = new URLSearchParams(window.location.search).get('key');
+
+    // Dates — localise to client timezone and locale.
+    const fmt = new Intl.DateTimeFormat(navigator.language, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    document.querySelectorAll<HTMLElement>('[data-date]').forEach(el => {
+        const iso = el.dataset.date;
+        if (iso) el.textContent = fmt.format(new Date(iso));
+    });
 
     // Title
     const titleEl = document.querySelector<HTMLElement>('.post-title');

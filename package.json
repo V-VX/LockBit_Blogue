@@ -5,10 +5,10 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "prebuild": "tsx --env-file=.env scripts/encrypt-posts.ts",
+    "prebuild": "tsx scripts/encrypt-posts.ts",
     "build": "astro check && astro build",
     "preview": "astro preview",
-    "encrypt": "tsx --env-file=.env scripts/encrypt-posts.ts",
+    "encrypt": "tsx scripts/encrypt-posts.ts",
     "astro": "astro"
   },
   "dependencies": {

@@ -139,15 +139,36 @@ const tokenize = (text: string): readonly Token[] => {
 // ---------------------------------------------------------------------------
 
 /**
+ * Derives salt and IV deterministically from (passphrase, plaintext) via
+ * SHA-256 so that the same inputs always produce the same ciphertext.
+ * Null-byte delimiters prevent prefix-collision between the two fields.
+ */
+const deriveNonce = async (
+  passphrase: string,
+  plaintext: string,
+): Promise<{ readonly salt: Uint8Array<ArrayBuffer>; readonly iv: Uint8Array<ArrayBuffer> }> => {
+  const enc = new TextEncoder();
+  const [saltDigest, ivDigest] = await Promise.all([
+    globalThis.crypto.subtle.digest('SHA-256', enc.encode(passphrase + '\x00salt\x00' + plaintext)),
+    globalThis.crypto.subtle.digest('SHA-256', enc.encode(passphrase + '\x00iv\x00' + plaintext)),
+  ]);
+  return {
+    salt: new Uint8Array(saltDigest).slice(0, SALT_BYTES) as Uint8Array<ArrayBuffer>,
+    iv: new Uint8Array(ivDigest).slice(0, IV_BYTES) as Uint8Array<ArrayBuffer>,
+  };
+};
+
+/**
  * Encrypts `plaintext` with `passphrase` using AES-256-GCM + PBKDF2-SHA256.
+ * Salt and IV are derived deterministically: same key + same plaintext always
+ * produce the same ciphertext, making re-encryption safe and idempotent.
  * Returns a base64-encoded payload containing salt, IV, and ciphertext.
  */
 export const encrypt = async (
   plaintext: string,
   passphrase: string,
 ): Promise<string> => {
-  const salt = randomBytes(SALT_BYTES);
-  const iv = randomBytes(IV_BYTES);
+  const { salt, iv } = await deriveNonce(passphrase, plaintext);
   const key = await deriveKey(passphrase, salt);
 
   const cipherBuffer = await globalThis.crypto.subtle.encrypt(
