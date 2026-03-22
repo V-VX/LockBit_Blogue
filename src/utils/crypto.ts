@@ -23,11 +23,6 @@ const KEY_BITS = 256;
 const allocBuffer = (size: number): Uint8Array<ArrayBuffer> =>
   new Uint8Array(new ArrayBuffer(size));
 
-const randomBytes = (size: number): Uint8Array<ArrayBuffer> => {
-  const buf = allocBuffer(size);
-  globalThis.crypto.getRandomValues(buf);
-  return buf;
-};
 
 const toBase64 = (bytes: Uint8Array<ArrayBuffer>): string => {
   let binary = '';

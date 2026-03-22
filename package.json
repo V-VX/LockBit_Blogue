@@ -1,33 +1,23 @@
 {
-  "name": "",
+  "name": "lockbit-blogue",
   "type": "module",
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
-    "start": "astro dev",
-    "prebuild": "tsx scripts/encrypt-posts.ts",
     "build": "astro check && astro build",
     "preview": "astro preview",
     "encrypt": "tsx scripts/encrypt-posts.ts",
+    "prebuild": "tsx scripts/encrypt-posts.ts",
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/check": "^0.5.9",
-    "@astrojs/node": "^8.2.4",
-    "@astrojs/react": "^3.1.0",
-    "@types/react": "^18.2.67",
-    "@types/react-dom": "^18.2.22",
-    "astro": "^4.5.5",
-    "dompurify": "^3.2.5",
-    "gray-matter": "^4.0.3",
-    "marked": "^12.0.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "typescript": "^5.4.2"
+    "astro": "^4.5.5"
   },
   "devDependencies": {
-    "@types/dompurify": "^3.0.5",
+    "@astrojs/check": "^0.5.9",
     "@types/node": "^20.14.0",
-    "tsx": "^4.7.2"
+    "gray-matter": "^4.0.3",
+    "tsx": "^4.7.2",
+    "typescript": "^5.4.2"
   }
 }
