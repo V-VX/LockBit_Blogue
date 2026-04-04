@@ -1,0 +1,282 @@
+---
+import { siteNavRows } from '../data/siteLinks';
+
+const FOOTER_START_AT = '2019-09-03T00:00:00.000Z';
+const FOOTER_START_LABEL = 'September 3, 2019';
+
+const addUTCYears = (date: Date, years: number): Date => {
+  const copy = new Date(date);
+  copy.setUTCFullYear(copy.getUTCFullYear() + years);
+  return copy;
+};
+
+const addUTCMonths = (date: Date, months: number): Date => {
+  const copy = new Date(date);
+  copy.setUTCMonth(copy.getUTCMonth() + months);
+  return copy;
+};
+
+const getElapsedParts = (startAt: Date, endAt: Date) => {
+  const cursor = new Date(startAt);
+  let years = 0;
+  let months = 0;
+
+  while (addUTCYears(cursor, 1) <= endAt) {
+    cursor.setUTCFullYear(cursor.getUTCFullYear() + 1);
+    years += 1;
+  }
+
+  while (addUTCMonths(cursor, 1) <= endAt) {
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    months += 1;
+  }
+
+  const diffMs = endAt.getTime() - cursor.getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const hourMs = 60 * 60 * 1000;
+
+  const days = Math.floor(diffMs / dayMs);
+  const hours = Math.floor((diffMs % dayMs) / hourMs);
+
+  return { years, months, days, hours };
+};
+
+const initialCount = getElapsedParts(new Date(FOOTER_START_AT), new Date());
+---
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-border">
+      <nav class="footer-nav" aria-label="Footer">
+        {siteNavRows.flat().map((link) => (
+          <a href={link.href} class="footer-link">{link.label}</a>
+        ))}
+      </nav>
+    </div>
+
+    <div class="countup-block">
+      <div class="countup-title">
+        We've been working since {FOOTER_START_LABEL}
+      </div>
+      <div class="countup" data-countup-start={FOOTER_START_AT}>
+        <span class="timeel" data-unit="years">{initialCount.years}</span>
+        <span class="timeel time-label">years</span>
+        <span class="timeel" data-unit="months">{initialCount.months}</span>
+        <span class="timeel time-label">months</span>
+        <span class="timeel" data-unit="days">{initialCount.days}</span>
+        <span class="timeel time-label">days</span>
+        <span class="timeel" data-unit="hours">{initialCount.hours}</span>
+        <span class="timeel time-label">hours</span>
+      </div>
+
+      <a href="#" class="bugbounty-link">Web Security &amp; Bug Bounty</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const addUTCYears = (date: Date, years: number): Date => {
+    const copy = new Date(date);
+    copy.setUTCFullYear(copy.getUTCFullYear() + years);
+    return copy;
+  };
+
+  const addUTCMonths = (date: Date, months: number): Date => {
+    const copy = new Date(date);
+    copy.setUTCMonth(copy.getUTCMonth() + months);
+    return copy;
+  };
+
+  const getElapsedParts = (
+    startAt: Date,
+    endAt: Date,
+  ): { years: number; months: number; days: number; hours: number } => {
+    const cursor = new Date(startAt);
+    let years = 0;
+    let months = 0;
+
+    while (addUTCYears(cursor, 1) <= endAt) {
+      cursor.setUTCFullYear(cursor.getUTCFullYear() + 1);
+      years += 1;
+    }
+
+    while (addUTCMonths(cursor, 1) <= endAt) {
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+      months += 1;
+    }
+
+    const diffMs = endAt.getTime() - cursor.getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const hourMs = 60 * 60 * 1000;
+
+    return {
+      years,
+      months,
+      days: Math.floor(diffMs / dayMs),
+      hours: Math.floor((diffMs % dayMs) / hourMs),
+    };
+  };
+
+  const countup = document.querySelector<HTMLElement>('.countup[data-countup-start]');
+
+  if (countup instanceof HTMLElement) {
+    const startAt = countup.dataset.countupStart;
+
+    if (startAt) {
+      const sync = () => {
+        const parts = getElapsedParts(new Date(startAt), new Date());
+
+        Object.entries(parts).forEach(([unit, value]) => {
+          const node = countup.querySelector<HTMLElement>(`[data-unit="${unit}"]`);
+          if (node) node.textContent = String(value);
+        });
+      };
+
+      sync();
+      window.setInterval(sync, 60_000);
+    }
+  }
+</script>
+
+<style>
+  .site-footer {
+    padding: 48px var(--page-gutter) 56px;
+  }
+
+  .footer-inner {
+    max-width: 1450px;
+    margin: 0 auto;
+  }
+
+  @media (min-width: 1200px) and (max-width: 1730px) {
+    .footer-inner {
+      max-width: 100%;
+    }
+  }
+
+  .footer-border {
+    border-top: 1px solid #d8dae0;
+    padding-top: 18px;
+  }
+
+  .footer-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 30px;
+    justify-items: end;
+  }
+
+  .footer-link {
+    color: rgba(0, 0, 0, 0.56);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition: color 0.12s;
+  }
+
+  .footer-link::after {
+    content: '  >';
+    color: rgba(var(--color-lockbit-red-rgb), 0.8);
+  }
+
+  .footer-link:hover {
+    color: #111111;
+  }
+
+  .countup-block {
+    text-align: center;
+    padding-top: 30px;
+  }
+
+  .countup-title {
+    opacity: 0.5;
+    text-transform: uppercase;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  .countup {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0 20px;
+    opacity: 0.5;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+  }
+
+  .timeel {
+    display: inline-block;
+  }
+
+  .time-label {
+    margin-right: 10px;
+  }
+
+  .bugbounty-link {
+    color: var(--color-lockbit-red);
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    letter-spacing: 0.03em;
+  }
+
+  .bugbounty-link:hover {
+    text-decoration: underline;
+  }
+
+  :global(.dark) .footer-border {
+    border-top-color: #1f2130;
+  }
+
+  :global(.dark) .footer-link {
+    color: rgba(255, 255, 255, 0.54);
+  }
+
+  :global(.dark) .footer-link:hover {
+    color: #f3f4f6;
+  }
+
+  :global(.dark) .countup-title,
+  :global(.dark) .countup {
+    color: rgba(255, 255, 255, 0.74);
+    opacity: 0.5;
+  }
+
+  :global(.dark) .bugbounty-link {
+    color: var(--color-lockbit-red);
+  }
+
+  @media (max-width: 980px) {
+    .footer-nav {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      justify-items: start;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .site-footer {
+      padding: 36px var(--page-gutter) 44px;
+    }
+
+    .footer-nav {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .countup {
+      gap: 4px;
+    }
+
+    .time-label {
+      margin-right: 6px;
+    }
+  }
+</style>

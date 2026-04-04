@@ -7,7 +7,9 @@
  * and writes encrypted Markdown files to `src/content/posts/`.
  *
  * Each source post must declare its own passphrase via a `key` frontmatter
- * field. The field is stripped from the output so it is never published.
+ * field. For multi-key posts, `key` is the inner content key and
+ * `access_keys` contains community-specific wrapper keys. Plaintext keys are
+ * always stripped from the published output.
  *
  * Usage:
  *   pnpm encrypt
@@ -16,25 +18,52 @@
  * Requires Node.js 18+ (globalThis.crypto.subtle).
  */
 
-import { access, readdir, readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import matter from 'gray-matter';
-import { encryptBody } from '../src/utils/crypto.js';
+import { encrypt, encryptBody } from '../src/utils/crypto.js';
 
 const SRC_DIR = new URL('../src/content/posts-src', import.meta.url).pathname;
 const OUT_DIR = new URL('../src/content/posts', import.meta.url).pathname;
 
-const fileExists = (path: string): Promise<boolean> =>
-  access(path).then(() => true, () => false);
+type AccessKeys = Record<string, string>;
+
+const normalizeAccessKeys = (
+  value: unknown,
+  filename: string,
+): AccessKeys | null => {
+  if (value == null) {
+    return null;
+  }
+
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`[error] ${filename} — "access_keys" must be an object map`);
+  }
+
+  const normalized = Object.entries(value).reduce<AccessKeys>((acc, [kid, rawSecret]) => {
+    const normalizedKid = kid.trim();
+    const secret = String(rawSecret ?? '').trim();
+
+    if (!normalizedKid) {
+      throw new Error(`[error] ${filename} — "access_keys" contains an empty community id`);
+    }
+    if (!secret) {
+      throw new Error(`[error] ${filename} — "access_keys.${normalizedKid}" is missing or empty`);
+    }
+
+    acc[normalizedKid] = secret;
+    return acc;
+  }, {});
+
+  if (Object.keys(normalized).length === 0) {
+    throw new Error(`[error] ${filename} — "access_keys" must include at least one community key`);
+  }
+
+  return normalized;
+};
 
 const encryptPost = async (filename: string): Promise<boolean> => {
   const outPath = join(OUT_DIR, filename);
-
-  if (await fileExists(outPath)) {
-    console.log(`[skip] ${filename} — already exists`);
-    return false;
-  }
-
   const raw = await readFile(join(SRC_DIR, filename), 'utf-8');
   const { data, content } = matter(raw);
 
@@ -48,13 +77,24 @@ const encryptPost = async (filename: string): Promise<boolean> => {
     throw new Error(`[error] ${filename} — missing or empty "key" field in frontmatter`);
   }
 
+  const accessKeys = normalizeAccessKeys(data['access_keys'], filename);
   const encryptedBody = await encryptBody(content, postKey);
+  const accessEnvelopes = accessKeys
+    ? Object.fromEntries(
+      await Promise.all(
+        Object.entries(accessKeys)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(async ([kid, secret]) => [kid, await encrypt(postKey, secret)]),
+      ),
+    )
+    : undefined;
 
-  // Strip "key" from output frontmatter — it must never be published.
-  const { key: _omit, ...outputData } = data;
+  // Strip plaintext keys from output frontmatter — they must never be published.
+  const { key: _omit, access_keys: _omitAccessKeys, ...outputData } = data;
 
   const outContent = matter.stringify(encryptedBody, {
     ...outputData,
+    ...(accessEnvelopes ? { access_envelopes: accessEnvelopes } : {}),
     is_protected: true,
   });
 

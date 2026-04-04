@@ -1,25 +1,33 @@
 ---
+import AuthorBadge from './AuthorBadge.astro';
+
 interface Props {
-    class?: string;
-    entry?: any;
     title: string;
-    encrypt_title?: string;
-    url?: string;
     uploaded_at: Date;
     updated_at: Date;
-    author?: string;
-    draft?: boolean;
-    is_protected?: boolean;
-    image?: string;
+    author_name?: string;
+    author_avatar?: string;
+    access_envelopes?: Record<string, string>;
 }
 
-const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft, is_protected, image } = Astro.props;
+const {
+    title,
+    uploaded_at,
+    updated_at,
+    author_name,
+    author_avatar,
+    access_envelopes,
+} = Astro.props;
+const serializedAccessEnvelopes = JSON.stringify(access_envelopes ?? null);
 ---
 <div class="post-info">
     <div class="post-img"></div>
     <div class="post-content">
         <div class="post-title" data-title={ title }>{ title }</div>
-        <div class="post-main">
+        {author_name && author_avatar && (
+            <AuthorBadge name={author_name} avatar={author_avatar} />
+        )}
+        <div class="post-main" data-access-envelopes={ serializedAccessEnvelopes }>
             <slot />
         </div>
         <div class="dates">
@@ -106,7 +114,52 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
     import { decrypt } from '../utils/crypto';
     import { animateElement } from '../utils/animation';
 
-    const key = new URLSearchParams(window.location.search).get('key');
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const legacyKey = new URLSearchParams(window.location.search).get('key')?.trim() ?? null;
+
+    const parseAccessEnvelopes = (value: string | undefined): Record<string, string> | null => {
+        if (!value || value === 'null') return null;
+
+        try {
+            const parsed = JSON.parse(value);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                return null;
+            }
+
+            return Object.entries(parsed).reduce<Record<string, string>>((acc, [kid, envelope]) => {
+                if (typeof envelope === 'string') {
+                    acc[kid] = envelope;
+                }
+                return acc;
+            }, {});
+        } catch {
+            return null;
+        }
+    };
+
+    const resolveBodyKey = async (accessEnvelopes: Record<string, string> | null): Promise<string | null> => {
+        if (accessEnvelopes && Object.keys(accessEnvelopes).length > 0) {
+            const kid = hashParams.get('kid')?.trim() ?? '';
+            const communityKey = hashParams.get('key')?.trim() ?? '';
+
+            if (!kid || !communityKey) {
+                return null;
+            }
+
+            const envelope = accessEnvelopes[kid];
+            if (!envelope) {
+                return null;
+            }
+
+            try {
+                return await decrypt(envelope, communityKey);
+            } catch {
+                return null;
+            }
+        }
+
+        return legacyKey;
+    };
 
     // Dates — localise to client timezone and locale.
     const fmt = new Intl.DateTimeFormat(navigator.language, {
@@ -128,11 +181,14 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
     }
 
     // Body — content is always server-rendered via Markdown component.
-    // If ?key= is present, attempt to decrypt each text node in place.
-    // A wrong key produces garbled output; no error is raised.
+    // If a valid decryption key is available, attempt to decrypt each text node
+    // in place. Wrong or missing keys leave the encrypted content visible.
     const postMain = document.querySelector<HTMLElement>('.post-main');
     if (postMain) {
-        if (key) {
+        const accessEnvelopes = parseAccessEnvelopes(postMain.dataset.accessEnvelopes);
+        const bodyKey = await resolveBodyKey(accessEnvelopes);
+
+        if (bodyKey) {
             const walker = document.createTreeWalker(postMain, NodeFilter.SHOW_TEXT);
             const nodes: Text[] = [];
             let n: Node | null;
@@ -142,7 +198,7 @@ const { entry, title, encrypt_title, url, uploaded_at, updated_at, author, draft
                 const value = node.textContent?.trim();
                 if (value) {
                     try {
-                        node.textContent = await decrypt(value, key);
+                        node.textContent = await decrypt(value, bodyKey);
                     } catch {
                         // Wrong key or not a ciphertext — leave as-is.
                     }

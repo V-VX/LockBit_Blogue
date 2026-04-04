@@ -1,0 +1,188 @@
+---
+interface Props {
+  readonly title: string;
+  readonly slug: string;
+  readonly isProtected: boolean;
+  readonly description: string;
+  readonly uploadedAt: Date;
+}
+
+const { title, slug, isProtected, description, uploadedAt } = Astro.props;
+
+const formatDate = (date: Date): string =>
+  date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+---
+
+<a
+  href={`/posts/${slug}`}
+  class:list={['post-block', { bad: isProtected, good: !isProtected }]}
+>
+  <div class="post-head">
+    <div class="post-title">{title}</div>
+    {isProtected ? (
+      <div class="post-timer">
+        <span class="timer-label">PROTECTED</span>
+      </div>
+    ) : (
+      <span class="post-status-published">published</span>
+    )}
+  </div>
+  <div class="post-body">
+    {!isProtected && description && (
+      <p class="post-description">{description}</p>
+    )}
+  </div>
+  <div class="post-footer">
+    <span class="post-date">{formatDate(uploadedAt)}</span>
+  </div>
+</a>
+
+<style>
+  /* ── Card ────────────────────────────────────────────── */
+  .post-block {
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: inherit;
+    background: #ffffff;
+    border: 1px solid #d5d0cc;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: background 0.12s, box-shadow 0.12s;
+    min-height: 180px;
+  }
+
+  .post-block:hover {
+    background: #f7f6f5;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+
+  :global(.dark) .post-block {
+    background: #131620;
+    border-color: #232535;
+  }
+
+  :global(.dark) .post-block:hover {
+    background: #1b1e2e;
+    box-shadow: none;
+  }
+
+  /* Top accent bar */
+  .post-block.good {
+    border-top: 4px solid #27ae60;
+  }
+
+  .post-block.bad {
+    border-top: 4px solid var(--color-lockbit-red);
+  }
+
+  :global(.dark) .post-block.bad {
+    border-top-color: var(--color-lockbit-red-dark);
+  }
+
+  /* ── Head ────────────────────────────────────────────── */
+  .post-head {
+    padding: 14px 14px 0;
+    text-align: center;
+  }
+
+  .post-block.good .post-head {
+    background: var(--color-post-head-published);
+  }
+
+  .post-block.bad .post-head {
+    background: var(--color-post-head-protected);
+  }
+
+  .post-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a1e2c;
+    margin-bottom: 9px;
+    line-height: 1.35;
+  }
+
+  :global(.dark) .post-title {
+    color: #dde0ec;
+  }
+
+  /* ── Status: published (green outline pill) ─────────── */
+  .post-status-published {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #27ae60;
+    border: 1px solid #27ae60;
+    border-radius: 3px;
+    padding: 2px 12px;
+    text-transform: lowercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 12px;
+  }
+
+  /* ── Status: protected (red rounded pill) ───────────── */
+  .post-timer {
+    background: var(--color-lockbit-red);
+    border-radius: 4px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  :global(.dark) .post-timer {
+    background: var(--color-lockbit-red);
+  }
+
+  .timer-label {
+    display: block;
+    text-align: center;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 0;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  :global(.dark) .timer-label {
+    color: #ffffff;
+  }
+
+  /* ── Body ────────────────────────────────────────────── */
+  .post-body {
+    flex: 1;
+    padding: 0 14px 14px;
+  }
+
+  .post-description {
+    margin: 0;
+    font-size: 12.5px;
+    color: rgba(0, 0, 0, 0.5);
+    line-height: 1.55;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+  }
+
+  :global(.dark) .post-description {
+    color: rgba(255, 255, 255, 0.38);
+  }
+
+  /* ── Footer ─────────────────────────────────────────── */
+  .post-footer {
+    padding: 7px 14px;
+  }
+
+  .post-date {
+    font-size: 11px;
+    color: rgba(0, 0, 0, 0.35);
+  }
+
+  :global(.dark) .post-date {
+    color: rgba(255, 255, 255, 0.28);
+  }
+</style>
