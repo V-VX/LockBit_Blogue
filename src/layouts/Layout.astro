@@ -1,19 +1,47 @@
 ---
+import { OGP_IMAGE_HEIGHT, OGP_IMAGE_WIDTH } from '../utils/og-image';
+
 interface Props {
 	title: string;
+	author?: string;
+	description?: string;
+	ogTitle?: string;
+	ogImage?: string;
+	ogType?: 'website' | 'article';
 }
 
-const { title } = Astro.props;
+const {
+	title,
+	author,
+	description = 'LockBit 5.0 Blogue',
+	ogTitle = title,
+	ogImage = '/og.svg',
+	ogType = 'website',
+} = Astro.props;
 ---
 
 <!doctype html>
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="description" content="Astro description" />
+		<meta name="description" content={description} />
+		{author && <meta name="author" content={author} />}
 		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" type="image/x-icon" href="/lo.ico" />
 		<meta name="generator" content={Astro.generator} />
+		<meta property="og:site_name" content="LockBit 5.0 Blogue" />
+		<meta property="og:title" content={ogTitle} />
+		<meta property="og:description" content={description} />
+		<meta property="og:type" content={ogType} />
+		<meta property="og:image" content={ogImage} />
+		<meta property="og:image:type" content="image/svg+xml" />
+		<meta property="og:image:width" content={String(OGP_IMAGE_WIDTH)} />
+		<meta property="og:image:height" content={String(OGP_IMAGE_HEIGHT)} />
+		<meta property="og:image:alt" content={`Preview image for ${ogTitle}`} />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content={ogTitle} />
+		<meta name="twitter:description" content={description} />
+		<meta name="twitter:image" content={ogImage} />
 		<title>{title}</title>
 	</head>
 	<body>
@@ -26,6 +54,14 @@ const { title } = Astro.props;
 		--accent: 247, 27, 58;
 		--accent-light: 224, 204, 250;
 		--accent-dark: 49, 10, 101;
+		--font-sans-stack: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		--page-background: linear-gradient(0deg, #f8f8f8, #f8f8f8);
+		--color-lockbit-red: #f71b3a;
+		--color-lockbit-red-rgb: 247, 27, 58;
+		--color-lockbit-red-dark: #b3122b;
+		--color-post-head-protected: #ffeded;
+		--color-post-head-published: #e9f9f1;
+		--page-gutter: 15px;
 		--accent-gradient: linear-gradient(
 			45deg,
 			rgb(var(--accent)),
@@ -34,14 +70,23 @@ const { title } = Astro.props;
 		);
 	}
 	html {
-		font-family: system-ui, sans-serif;
-		background: #ffffff;
+		font-family: var(--font-sans-stack);
+		background: var(--page-background);
 		background-size: 224px;
 	}
+	body {
+		margin: 0;
+		padding: 0;
+		font-family: var(--font-sans-stack);
+		background: var(--page-background);
+	}
 	html.dark {
-		font-family: system-ui, sans-serif;
-		background: #13151a;
+		font-family: var(--font-sans-stack);
+		background: var(--page-background);
 		background-size: 224px;
+	}
+	html.dark body {
+		background: var(--page-background);
 	}
 	code {
 		font-family:

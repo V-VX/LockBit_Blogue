@@ -3,6 +3,7 @@ import { getCollection } from 'astro:content';
 import Main from "../../layouts/Main.astro";
 import Post from "../../components/Post.astro";
 import Markdown from "../../components/misc/Markdown.astro";
+import { getOgImagePath } from '../../utils/og-image';
 
 export async function getStaticPaths() {
     const posts = await getCollection('posts', ({ data }) => {
@@ -16,13 +17,36 @@ export async function getStaticPaths() {
 
 const { entry } = Astro.props;
 const { Content } = await entry.render();
+const authorSlug = entry.data.author;
+const isProtected = entry.data.isProtected ?? entry.data.is_protected ?? false;
+const pageTitle = `${entry.data.title} | Lock Bit 5.0 Blogue`;
+const ogDescription = isProtected
+    ? 'LockBit 5.0 Blogue'
+    : entry.data.description ?? 'LockBit 5.0 Blogue';
+const ogImage = getOgImagePath(entry.slug);
+const authors = await getCollection('authors');
+const author = authors.find((authorEntry) => authorEntry.slug === authorSlug);
+
+if (!author) {
+    throw new Error(`Missing author resource for "${authorSlug}" in src/content/authors/`);
+}
 ---
 
-<Main title={ "fuck you" }>
+<Main
+    title={ pageTitle }
+    author={ authorSlug }
+    description={ ogDescription }
+    ogTitle={ entry.data.title }
+    ogImage={ ogImage }
+    ogType="article"
+>
     <Post
         title={ entry.data.title }
         uploaded_at={ entry.data.uploaded_at }
         updated_at={ entry.data.updated_at }
+        author_name={ author.data.name }
+        author_avatar={ author.data.avatar }
+        access_envelopes={ entry.data.access_envelopes }
         >
         <Markdown class="some ">
             <Content />
