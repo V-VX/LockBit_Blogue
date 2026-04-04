@@ -6,10 +6,23 @@
  * encrypts each post body with AES-256-GCM + PBKDF2-SHA256,
  * and writes encrypted Markdown files to `src/content/posts/`.
  *
- * Each source post must declare its own passphrase via a `key` frontmatter
- * field. For multi-key posts, `key` is the inner content key and
- * `access_keys` contains community-specific wrapper keys. Plaintext keys are
- * always stripped from the published output.
+ * Output filenames are also deterministic:
+ * each source filename stem is encrypted with that post's `key`, converted to
+ * a lowercase hex slug, and emitted as `<encrypted-slug>.md`.
+ *
+ * Timestamps are managed in a build-stable way:
+ * - explicit `uploaded_at` / `updated_at` values in source are used as-is
+ * - new files get both timestamps set to the current ISO datetime in output
+ * - updated files preserve `uploaded_at` and bump `updated_at`
+ * - unchanged files preserve both timestamps
+ * - when source omits `uploaded_at`, it is backfilled into source
+ * - when source omits `updated_at`, it stays auto-managed in output only
+ *
+ * Change detection intentionally does not rely on git history.
+ * In this repo `posts-src` is git-ignored, so `git log -- src/content/posts-src`
+ * cannot be the source of truth. Instead we compare the deterministic encrypted
+ * output that would be produced for a source post against the current published
+ * output file, which works the same locally and in CI/build environments.
  *
  * Usage:
  *   pnpm encrypt
@@ -18,8 +31,8 @@
  * Requires Node.js 18+ (globalThis.crypto.subtle).
  */
 
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
 import matter from 'gray-matter';
 import { encrypt, encryptBody } from '../src/utils/crypto.js';
 
@@ -27,6 +40,39 @@ const SRC_DIR = new URL('../src/content/posts-src', import.meta.url).pathname;
 const OUT_DIR = new URL('../src/content/posts', import.meta.url).pathname;
 
 type AccessKeys = Record<string, string>;
+type Frontmatter = Record<string, unknown>;
+type TimestampField = 'uploaded_at' | 'updated_at';
+
+type ParsedMarkdownFile = {
+  path: string;
+  raw: string;
+  data: Frontmatter;
+  content: string;
+};
+
+type SourceTimestampResolution = {
+  uploadedAt: Date;
+  updatedAt: Date;
+  sourceUpdates: Partial<Record<TimestampField, string>>;
+  changedMeaningfully: boolean;
+  isNewPublication: boolean;
+};
+
+type ProcessResult =
+  | { status: 'created' | 'updated' | 'unchanged'; targetFilename: string }
+  | { status: 'skipped'; sourceFilename: string };
+
+type RunSummary = {
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  pruned: number;
+  sourceTouched: number;
+};
+
+const hasOwn = (value: Frontmatter, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
 
 const normalizeAccessKeys = (
   value: unknown,
@@ -62,23 +108,345 @@ const normalizeAccessKeys = (
   return normalized;
 };
 
-const encryptPost = async (filename: string): Promise<boolean> => {
-  const outPath = join(OUT_DIR, filename);
-  const raw = await readFile(join(SRC_DIR, filename), 'utf-8');
-  const { data, content } = matter(raw);
+const parseDateValue = (
+  value: unknown,
+  field: TimestampField,
+  filename: string,
+): Date => {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new Error(`[error] ${filename} — "${field}" is not a valid date`);
+    }
+    return value;
+  }
 
-  if (!content.trim()) {
-    console.warn(`[skip] ${filename} — empty body`);
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  throw new Error(`[error] ${filename} — "${field}" is not a valid date`);
+};
+
+const getOptionalDate = (
+  data: Frontmatter,
+  field: TimestampField,
+  filename: string,
+): Date | null => {
+  if (!hasOwn(data, field)) {
+    return null;
+  }
+
+  const value = data[field];
+  if (value == null) {
+    return null;
+  }
+
+  if (typeof value === 'string' && value.trim() === '') {
+    return null;
+  }
+
+  return parseDateValue(value, field, filename);
+};
+
+const parseMarkdownFile = async (path: string): Promise<ParsedMarkdownFile> => {
+  const raw = await readFile(path, 'utf-8');
+  const parsed = matter(raw);
+
+  return {
+    path,
+    raw,
+    data: parsed.data as Frontmatter,
+    content: parsed.content,
+  };
+};
+
+const normalizeLineEndings = (value: string): string =>
+  value.replace(/\r\n/g, '\n');
+
+const normalizeComparable = (value: unknown): unknown => {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeComparable);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entryValue]) => [key, normalizeComparable(entryValue)]),
+    );
+  }
+
+  return value;
+};
+
+const areEqual = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(normalizeComparable(left)) === JSON.stringify(normalizeComparable(right));
+
+const toBase64Url = (value: string): string =>
+  value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+
+const sourceStemFromFilename = (filename: string): string =>
+  filename.slice(0, -extname(filename).length);
+
+const encryptSourceStemLegacySlug = async (
+  sourceFilename: string,
+  postKey: string,
+): Promise<string> =>
+  toBase64Url(await encrypt(sourceStemFromFilename(sourceFilename), postKey));
+
+const encryptSourceStemToSlug = async (
+  sourceFilename: string,
+  postKey: string,
+): Promise<string> => {
+  const encryptedStem = await encrypt(sourceStemFromFilename(sourceFilename), postKey);
+  return Buffer.from(encryptedStem, 'base64').toString('hex');
+};
+
+const autoTimestampString = (value: Date): string => value.toISOString();
+
+const publishedFrontmatterFromSource = ({
+  sourceData,
+  uploadedAt,
+  updatedAt,
+  accessEnvelopes,
+}: {
+  sourceData: Frontmatter;
+  uploadedAt: Date;
+  updatedAt: Date;
+  accessEnvelopes?: AccessKeys;
+}): Frontmatter => {
+  const sourceCopy: Frontmatter = { ...sourceData };
+
+  delete sourceCopy.key;
+  delete sourceCopy.access_keys;
+  delete sourceCopy.access_envelopes;
+  delete sourceCopy.uploaded_at;
+  delete sourceCopy.updated_at;
+
+  const published: Frontmatter = {};
+
+  const moveIfPresent = (key: string) => {
+    if (!hasOwn(sourceCopy, key)) {
+      return;
+    }
+
+    published[key] = sourceCopy[key];
+    delete sourceCopy[key];
+  };
+
+  moveIfPresent('title');
+  published.uploaded_at = uploadedAt;
+  published.updated_at = updatedAt;
+  moveIfPresent('author');
+  moveIfPresent('draft');
+  moveIfPresent('isProtected');
+  moveIfPresent('description');
+
+  for (const key of Object.keys(sourceCopy).sort((left, right) => left.localeCompare(right))) {
+    published[key] = sourceCopy[key];
+  }
+
+  if (accessEnvelopes) {
+    published.access_envelopes = accessEnvelopes;
+  }
+
+  published.is_protected = true;
+
+  return published;
+};
+
+const withoutUpdatedAt = (data: Frontmatter): Frontmatter => {
+  const next = { ...data };
+  delete next.updated_at;
+  return next;
+};
+
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
+
+const upsertFrontmatterField = (
+  frontmatter: string,
+  field: TimestampField,
+  value: string,
+  eol: string,
+): string => {
+  const fieldPattern = new RegExp(`^${field}:\\s.*$`, 'm');
+
+  if (fieldPattern.test(frontmatter)) {
+    return frontmatter.replace(fieldPattern, `${field}: ${value}`);
+  }
+
+  return frontmatter ? `${frontmatter}${eol}${field}: ${value}` : `${field}: ${value}`;
+};
+
+const patchSourceFrontmatter = (
+  raw: string,
+  updates: Partial<Record<TimestampField, string>>,
+): string => {
+  const match = raw.match(FRONTMATTER_RE);
+  if (!match) {
+    throw new Error('[error] source post is missing YAML frontmatter');
+  }
+
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  let frontmatter = match[1];
+
+  for (const field of ['uploaded_at', 'updated_at'] as const) {
+    const nextValue = updates[field];
+    if (!nextValue) {
+      continue;
+    }
+
+    frontmatter = upsertFrontmatterField(frontmatter, field, nextValue, eol);
+  }
+
+  const prefix = `---${eol}${frontmatter}${eol}---${match[2]}`;
+  return `${prefix}${raw.slice(match[0].length)}`;
+};
+
+const resolveTimestamps = ({
+  sourceFilename,
+  sourceData,
+  existingOutput,
+  encryptedBody,
+  accessEnvelopes,
+  now,
+}: {
+  sourceFilename: string;
+  sourceData: Frontmatter;
+  existingOutput: ParsedMarkdownFile | null;
+  encryptedBody: string;
+  accessEnvelopes?: AccessKeys;
+  now: Date;
+}): SourceTimestampResolution => {
+  const explicitUploadedAt = getOptionalDate(sourceData, 'uploaded_at', sourceFilename);
+  const explicitUpdatedAt = getOptionalDate(sourceData, 'updated_at', sourceFilename);
+  const existingUploadedAt = existingOutput
+    ? getOptionalDate(existingOutput.data, 'uploaded_at', existingOutput.path)
+    : null;
+  const existingUpdatedAt = existingOutput
+    ? getOptionalDate(existingOutput.data, 'updated_at', existingOutput.path)
+    : null;
+
+  const uploadedAt = explicitUploadedAt ?? existingUploadedAt ?? now;
+  const comparableNextFrontmatter = publishedFrontmatterFromSource({
+    sourceData,
+    uploadedAt,
+    updatedAt: existingUpdatedAt ?? uploadedAt,
+    accessEnvelopes,
+  });
+
+  const comparableNext = {
+    frontmatter: withoutUpdatedAt(comparableNextFrontmatter),
+    content: normalizeLineEndings(encryptedBody),
+  };
+  const comparableExisting = existingOutput
+    ? {
+      frontmatter: withoutUpdatedAt(existingOutput.data),
+      content: normalizeLineEndings(existingOutput.content),
+    }
+    : null;
+
+  const changedMeaningfully =
+    !comparableExisting || !areEqual(comparableExisting, comparableNext);
+
+  const updatedAt = explicitUpdatedAt
+    ?? (existingOutput
+      ? (changedMeaningfully ? now : (existingUpdatedAt ?? uploadedAt))
+      : now);
+
+  const sourceUpdates: Partial<Record<TimestampField, string>> = {};
+  if (!explicitUploadedAt) {
+    sourceUpdates.uploaded_at = autoTimestampString(uploadedAt);
+  }
+
+  return {
+    uploadedAt,
+    updatedAt,
+    sourceUpdates,
+    changedMeaningfully,
+    isNewPublication: !existingOutput,
+  };
+};
+
+const readExistingPublishedFile = async (
+  sourceFilename: string,
+  targetPath: string,
+  legacySlugPath: string,
+): Promise<ParsedMarkdownFile | null> => {
+  const candidatePaths = [
+    targetPath,
+    legacySlugPath,
+    join(OUT_DIR, sourceFilename),
+  ].filter((value, index, values) => values.indexOf(value) === index);
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      return await parseMarkdownFile(candidatePath);
+    } catch (error: unknown) {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String(error.code)
+          : null;
+
+      if (code === 'ENOENT') {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  return null;
+};
+
+const writeSourceIfNeeded = async (
+  sourcePath: string,
+  sourceRaw: string,
+  updates: Partial<Record<TimestampField, string>>,
+): Promise<boolean> => {
+  if (!updates.uploaded_at && !updates.updated_at) {
     return false;
   }
 
-  const postKey = String(data['key'] ?? '').trim();
-  if (!postKey) {
-    throw new Error(`[error] ${filename} — missing or empty "key" field in frontmatter`);
+  const nextRaw = patchSourceFrontmatter(sourceRaw, updates);
+  if (nextRaw === sourceRaw) {
+    return false;
   }
 
-  const accessKeys = normalizeAccessKeys(data['access_keys'], filename);
-  const encryptedBody = await encryptBody(content, postKey);
+  await writeFile(sourcePath, nextRaw, 'utf-8');
+  return true;
+};
+
+const encryptPost = async (
+  sourceFilename: string,
+  now: Date,
+): Promise<ProcessResult & { sourceTouched: boolean }> => {
+  const sourcePath = join(SRC_DIR, sourceFilename);
+  const sourceFile = await parseMarkdownFile(sourcePath);
+
+  if (!sourceFile.content.trim()) {
+    console.warn(`[skip] ${sourceFilename} — empty body`);
+    return {
+      status: 'skipped',
+      sourceFilename,
+      sourceTouched: false,
+    };
+  }
+
+  const postKey = String(sourceFile.data.key ?? '').trim();
+  if (!postKey) {
+    throw new Error(`[error] ${sourceFilename} — missing or empty "key" field in frontmatter`);
+  }
+
+  const accessKeys = normalizeAccessKeys(sourceFile.data.access_keys, sourceFilename);
   const accessEnvelopes = accessKeys
     ? Object.fromEntries(
       await Promise.all(
@@ -88,26 +456,69 @@ const encryptPost = async (filename: string): Promise<boolean> => {
       ),
     )
     : undefined;
-
-  // Strip plaintext keys from output frontmatter — they must never be published.
-  const { key: _omit, access_keys: _omitAccessKeys, ...outputData } = data;
-
-  const outContent = matter.stringify(encryptedBody, {
-    ...outputData,
-    ...(accessEnvelopes ? { access_envelopes: accessEnvelopes } : {}),
-    is_protected: true,
+  const encryptedBody = await encryptBody(sourceFile.content, postKey);
+  const targetSlug = await encryptSourceStemToSlug(sourceFilename, postKey);
+  const legacySlug = await encryptSourceStemLegacySlug(sourceFilename, postKey);
+  const targetFilename = `${targetSlug}.md`;
+  const targetPath = join(OUT_DIR, targetFilename);
+  const existingOutput = await readExistingPublishedFile(
+    sourceFilename,
+    targetPath,
+    join(OUT_DIR, `${legacySlug}.md`),
+  );
+  const resolvedTimestamps = resolveTimestamps({
+    sourceFilename,
+    sourceData: sourceFile.data,
+    existingOutput,
+    encryptedBody,
+    accessEnvelopes,
+    now,
   });
 
-  await writeFile(outPath, outContent, 'utf-8');
-  console.log(`[ok]   ${filename}`);
-  return true;
+  const publishedFrontmatter = publishedFrontmatterFromSource({
+    sourceData: sourceFile.data,
+    uploadedAt: resolvedTimestamps.uploadedAt,
+    updatedAt: resolvedTimestamps.updatedAt,
+    accessEnvelopes,
+  });
+  const nextOutputRaw = matter.stringify(encryptedBody, publishedFrontmatter);
+  const sourceTouched = await writeSourceIfNeeded(
+    sourcePath,
+    sourceFile.raw,
+    resolvedTimestamps.sourceUpdates,
+  );
+
+  if (sourceTouched) {
+    console.log(`[meta] ${sourceFilename}`);
+  }
+
+  if (existingOutput?.raw === nextOutputRaw && existingOutput.path === targetPath) {
+    console.log(`[ok]   ${sourceFilename} -> ${targetFilename} (unchanged)`);
+    return {
+      status: 'unchanged',
+      targetFilename,
+      sourceTouched,
+    };
+  }
+
+  await writeFile(targetPath, nextOutputRaw, 'utf-8');
+
+  const status =
+    resolvedTimestamps.isNewPublication ? 'created' : 'updated';
+  console.log(`[ok]   ${sourceFilename} -> ${targetFilename} (${status})`);
+
+  return {
+    status,
+    targetFilename,
+    sourceTouched,
+  };
 };
 
 const getSourceFiles = async (): Promise<string[]> => {
   try {
-    return (await readdir(SRC_DIR)).filter(
-      (filename: string) => extname(filename) === '.md',
-    );
+    return (await readdir(SRC_DIR))
+      .filter((filename: string) => extname(filename) === '.md')
+      .sort((left, right) => left.localeCompare(right));
   } catch (error: unknown) {
     const code =
       typeof error === 'object' && error !== null && 'code' in error
@@ -134,6 +545,23 @@ const getSourceFiles = async (): Promise<string[]> => {
   }
 };
 
+const pruneStaleOutputs = async (expectedFiles: ReadonlySet<string>): Promise<number> => {
+  const publishedFiles = (await readdir(OUT_DIR))
+    .filter((filename: string) => extname(filename) === '.md')
+    .sort((left, right) => left.localeCompare(right));
+
+  const staleFiles = publishedFiles.filter((filename) => !expectedFiles.has(filename));
+
+  await Promise.all(
+    staleFiles.map(async (filename) => {
+      await unlink(join(OUT_DIR, filename));
+      console.log(`[rm]   ${filename}`);
+    }),
+  );
+
+  return staleFiles.length;
+};
+
 const run = async (): Promise<void> => {
   await mkdir(OUT_DIR, { recursive: true });
   const files = await getSourceFiles();
@@ -143,10 +571,52 @@ const run = async (): Promise<void> => {
     return;
   }
 
-  const results = await Promise.all(files.map((f: string) => encryptPost(f)));
-  const encrypted = results.filter(Boolean).length;
-  const skipped = files.length - encrypted;
-  console.log(`\nDone: ${encrypted} encrypted, ${skipped} skipped → src/content/posts/`);
+  const now = new Date();
+  const summary: RunSummary = {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    skipped: 0,
+    pruned: 0,
+    sourceTouched: 0,
+  };
+  const expectedFiles = new Set<string>();
+
+  for (const filename of files) {
+    const result = await encryptPost(filename, now);
+
+    if (result.sourceTouched) {
+      summary.sourceTouched += 1;
+    }
+
+    switch (result.status) {
+      case 'created':
+        summary.created += 1;
+        expectedFiles.add(result.targetFilename);
+        break;
+      case 'updated':
+        summary.updated += 1;
+        expectedFiles.add(result.targetFilename);
+        break;
+      case 'unchanged':
+        summary.unchanged += 1;
+        expectedFiles.add(result.targetFilename);
+        break;
+      case 'skipped':
+        summary.skipped += 1;
+        break;
+      default:
+        throw new Error(`[error] unhandled result status: ${(result satisfies never)}`);
+    }
+  }
+
+  summary.pruned = await pruneStaleOutputs(expectedFiles);
+
+  console.log(
+    `\nDone: ${summary.created} created, ${summary.updated} updated, ` +
+    `${summary.unchanged} unchanged, ${summary.skipped} skipped, ` +
+    `${summary.pruned} pruned, ${summary.sourceTouched} source touched → src/content/posts/`,
+  );
 };
 
 run().catch((err: unknown) => {
