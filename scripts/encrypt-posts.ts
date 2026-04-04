@@ -18,7 +18,7 @@
  * Requires Node.js 18+ (globalThis.crypto.subtle).
  */
 
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import matter from 'gray-matter';
 import { encrypt, encryptBody } from '../src/utils/crypto.js';
@@ -103,10 +103,40 @@ const encryptPost = async (filename: string): Promise<boolean> => {
   return true;
 };
 
+const getSourceFiles = async (): Promise<string[]> => {
+  try {
+    return (await readdir(SRC_DIR)).filter(
+      (filename: string) => extname(filename) === '.md',
+    );
+  } catch (error: unknown) {
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String(error.code)
+        : null;
+
+    if (code !== 'ENOENT') {
+      throw error;
+    }
+
+    await mkdir(OUT_DIR, { recursive: true });
+
+    const publishedFiles = (await readdir(OUT_DIR)).filter(
+      (filename: string) => extname(filename) === '.md',
+    );
+
+    if (publishedFiles.length > 0) {
+      console.warn('[skip] src/content/posts-src/ not found; using existing encrypted posts in src/content/posts/.');
+    } else {
+      console.warn('[skip] src/content/posts-src/ not found; continuing with an empty posts collection.');
+    }
+
+    return [];
+  }
+};
+
 const run = async (): Promise<void> => {
-  const files = (await readdir(SRC_DIR)).filter(
-    (f: string) => extname(f) === '.md',
-  );
+  await mkdir(OUT_DIR, { recursive: true });
+  const files = await getSourceFiles();
 
   if (files.length === 0) {
     console.log('No Markdown files found in posts-src/');
