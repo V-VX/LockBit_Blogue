@@ -1,5 +1,5 @@
 import { getCollection } from 'astro:content';
-import { renderOgSvg } from '../../../utils/og-image';
+import { renderOgPng } from '../../../utils/og-image';
 
 export const prerender = true;
 
@@ -19,11 +19,11 @@ export const GET = async ({
 }: {
   props: { title: string };
 }): Promise<Response> => {
-  const svg = await renderOgSvg(props.title);
+  const png = await renderOgPng(props.title);
 
-  return new Response(svg, {
+  return new Response(new Uint8Array(png), {
     headers: {
-      'Content-Type': 'image/svg+xml; charset=utf-8',
+      'Content-Type': 'image/png',
       'Cache-Control': 'public, max-age=31536000, immutable',
     },
   });

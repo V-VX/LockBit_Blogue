@@ -15,9 +15,13 @@ const {
 	author,
 	description = 'LockBit 5.0 Blogue',
 	ogTitle = title,
-	ogImage = '/og.svg',
+	ogImage = '/og.png',
 	ogType = 'website',
 } = Astro.props;
+const site = Astro.site ?? Astro.url;
+const canonicalUrl = new URL(Astro.url.pathname, site);
+const resolvedOgImage = new URL(ogImage, site);
+const metaTitle = ogTitle || title;
 ---
 
 <!doctype html>
@@ -28,20 +32,24 @@ const {
 		{author && <meta name="author" content={author} />}
 		<meta name="viewport" content="width=device-width" />
 		<link rel="icon" type="image/x-icon" href="/lo.ico" />
+		<link rel="canonical" href={canonicalUrl.toString()} />
 		<meta name="generator" content={Astro.generator} />
 		<meta property="og:site_name" content="LockBit 5.0 Blogue" />
-		<meta property="og:title" content={ogTitle} />
+		<meta property="og:title" content={metaTitle} />
 		<meta property="og:description" content={description} />
 		<meta property="og:type" content={ogType} />
-		<meta property="og:image" content={ogImage} />
-		<meta property="og:image:type" content="image/svg+xml" />
+		<meta property="og:url" content={canonicalUrl.toString()} />
+		<meta property="og:image" content={resolvedOgImage.toString()} />
+		<meta property="og:image:secure_url" content={resolvedOgImage.toString()} />
+		<meta property="og:image:type" content="image/png" />
 		<meta property="og:image:width" content={String(OGP_IMAGE_WIDTH)} />
 		<meta property="og:image:height" content={String(OGP_IMAGE_HEIGHT)} />
-		<meta property="og:image:alt" content={`Preview image for ${ogTitle}`} />
+		<meta property="og:image:alt" content={`Preview image for ${metaTitle}`} />
 		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:title" content={ogTitle} />
+		<meta name="twitter:title" content={metaTitle} />
 		<meta name="twitter:description" content={description} />
-		<meta name="twitter:image" content={ogImage} />
+		<meta name="twitter:image" content={resolvedOgImage.toString()} />
+		<meta name="twitter:image:alt" content={`Preview image for ${metaTitle}`} />
 		<title>{title}</title>
 	</head>
 	<body>

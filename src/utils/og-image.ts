@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
+import sharp from 'sharp';
 
-export const OGP_IMAGE_WIDTH = 934;
-export const OGP_IMAGE_HEIGHT = 449;
+export const OGP_IMAGE_WIDTH = 1200;
+export const OGP_IMAGE_HEIGHT = 630;
 
 const DEFAULT_SITE_NAME = 'LockBit 5.0 Blogue';
 const BACKGROUND_IMAGE_URL = new URL('../../public/bg.png', import.meta.url);
@@ -110,7 +111,7 @@ const createTextBlock = (
   `;
 
 export const getOgImagePath = (slug?: string): string =>
-  slug ? `/og/posts/${slug}.svg` : '/og.svg';
+  slug ? `/og/posts/${slug}.png` : '/og.png';
 
 export const renderOgSvg = async (title: string): Promise<string> => {
   const background = await getBackgroundDataUri();
@@ -120,25 +121,25 @@ export const renderOgSvg = async (title: string): Promise<string> => {
   const singleLine = !highlight;
 
   const headlineFontSize = singleLine
-    ? clamp(720 / Math.max(headlineUnits, 4), 64, 102)
-    : clamp(705 / Math.max(headlineUnits, 4), 62, 92);
+    ? clamp(930 / Math.max(headlineUnits, 4), 82, 128)
+    : clamp(915 / Math.max(headlineUnits, 4), 78, 116);
   const highlightFontSize = highlight
-    ? clamp(610 / Math.max(highlightUnits, 3), 60, 88)
+    ? clamp(780 / Math.max(highlightUnits, 3), 74, 110)
     : 0;
 
-  const topY = singleLine ? 214 : 135;
-  const ribbonHeight = highlight ? Math.max(84, highlightFontSize + 26) : 0;
+  const topY = singleLine ? 296 : 196;
+  const ribbonHeight = highlight ? Math.max(108, highlightFontSize + 32) : 0;
   const ribbonWidth = highlight
-    ? clamp(highlightUnits * highlightFontSize * 0.84 + 120, 360, 760)
+    ? clamp(highlightUnits * highlightFontSize * 0.84 + 150, 520, 978)
     : 0;
   const ribbonX = (OGP_IMAGE_WIDTH - ribbonWidth) / 2;
-  const ribbonY = highlight ? 205 : 0;
+  const ribbonY = highlight ? 292 : 0;
   const highlightY = highlight ? ribbonY + ribbonHeight / 2 + 2 : 0;
-  const accentRuleY = singleLine ? 302 : 0;
+  const accentRuleY = singleLine ? 398 : 0;
 
   const textMarkup = singleLine
     ? `${createTextBlock(headline, topY, headlineFontSize, '#262223')}
-    <rect x="231" y="${formatNumber(accentRuleY)}" width="472" height="8" rx="4" fill="#f71b3a" opacity="0.96" />`
+    <rect x="296" y="${formatNumber(accentRuleY)}" width="608" height="10" rx="5" fill="#f71b3a" opacity="0.96" />`
     : `${createTextBlock(headline, topY, headlineFontSize, '#262223')}
     <rect
       x="${formatNumber(ribbonX)}"
@@ -160,7 +161,19 @@ export const renderOgSvg = async (title: string): Promise<string> => {
   </defs>
   <rect width="${OGP_IMAGE_WIDTH}" height="${OGP_IMAGE_HEIGHT}" fill="url(#pageBackground)" />
   <image href="${background}" x="0" y="0" width="${OGP_IMAGE_WIDTH}" height="${OGP_IMAGE_HEIGHT}" preserveAspectRatio="xMidYMid slice" />
-  <rect x="47" y="31" width="${OGP_IMAGE_WIDTH - 94}" height="${OGP_IMAGE_HEIGHT - 62}" fill="transparent" stroke="rgba(247,27,58,0.12)" stroke-width="1" stroke-dasharray="2 12" />
+  <rect x="60" y="44" width="${OGP_IMAGE_WIDTH - 120}" height="${OGP_IMAGE_HEIGHT - 88}" fill="transparent" stroke="rgba(247,27,58,0.16)" stroke-width="1.4" stroke-dasharray="2 14" />
   ${textMarkup}
 </svg>`;
+};
+
+export const renderOgPng = async (title: string): Promise<Buffer<ArrayBufferLike>> => {
+  const svg = await renderOgSvg(title);
+
+  return sharp(Buffer.from(svg))
+    .png({
+      compressionLevel: 9,
+      quality: 100,
+      palette: false,
+    })
+    .toBuffer();
 };

@@ -22,5 +22,6 @@ pnpm-debug.log*
 
 # plain (unencrypted) post sources — never commit these
 src/content/posts-src/
+sample/
 AGENTS.md
 CLAUDE.md
