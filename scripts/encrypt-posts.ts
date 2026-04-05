@@ -7,8 +7,9 @@
  * and writes encrypted Markdown files to `src/content/posts/`.
  *
  * Output filenames are also deterministic:
- * each source filename stem is encrypted with that post's `key`, converted to
- * a lowercase hex slug, and emitted as `<encrypted-slug>.md`.
+ * each source filename stem is converted into a keyed HMAC-SHA-256 digest
+ * using that post's `key`, truncated to 128 bits, and emitted as a compact
+ * lowercase hex slug like `<32-hex-chars>.md`.
  *
  * Timestamps are managed in a build-stable way:
  * - explicit `uploaded_at` / `updated_at` values in source are used as-is
@@ -38,6 +39,8 @@ import { encrypt, encryptBody } from '../src/utils/crypto.js';
 
 const SRC_DIR = new URL('../src/content/posts-src', import.meta.url).pathname;
 const OUT_DIR = new URL('../src/content/posts', import.meta.url).pathname;
+const SLUG_HEX_BYTES = 16;
+const SLUG_HMAC_NAMESPACE = 'posts-slug-v1';
 
 type AccessKeys = Record<string, string>;
 type Frontmatter = Record<string, unknown>;
@@ -196,13 +199,35 @@ const toBase64Url = (value: string): string =>
 const sourceStemFromFilename = (filename: string): string =>
   filename.slice(0, -extname(filename).length);
 
+const deriveSourceStemSlug = async (
+  sourceFilename: string,
+  postKey: string,
+): Promise<string> => {
+  const hmacKey = await globalThis.crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(postKey),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const digest = await globalThis.crypto.subtle.sign(
+    'HMAC',
+    hmacKey,
+    new TextEncoder().encode(`${SLUG_HMAC_NAMESPACE}\x00${sourceStemFromFilename(sourceFilename)}`),
+  );
+
+  return Buffer
+    .from(new Uint8Array(digest).subarray(0, SLUG_HEX_BYTES))
+    .toString('hex');
+};
+
 const encryptSourceStemLegacySlug = async (
   sourceFilename: string,
   postKey: string,
 ): Promise<string> =>
   toBase64Url(await encrypt(sourceStemFromFilename(sourceFilename), postKey));
 
-const encryptSourceStemToSlug = async (
+const encryptSourceStemLegacyHexSlug = async (
   sourceFilename: string,
   postKey: string,
 ): Promise<string> => {
@@ -377,16 +402,8 @@ const resolveTimestamps = ({
 };
 
 const readExistingPublishedFile = async (
-  sourceFilename: string,
-  targetPath: string,
-  legacySlugPath: string,
+  candidatePaths: readonly string[],
 ): Promise<ParsedMarkdownFile | null> => {
-  const candidatePaths = [
-    targetPath,
-    legacySlugPath,
-    join(OUT_DIR, sourceFilename),
-  ].filter((value, index, values) => values.indexOf(value) === index);
-
   for (const candidatePath of candidatePaths) {
     try {
       return await parseMarkdownFile(candidatePath);
@@ -457,15 +474,17 @@ const encryptPost = async (
     )
     : undefined;
   const encryptedBody = await encryptBody(sourceFile.content, postKey);
-  const targetSlug = await encryptSourceStemToSlug(sourceFilename, postKey);
-  const legacySlug = await encryptSourceStemLegacySlug(sourceFilename, postKey);
+  const targetSlug = await deriveSourceStemSlug(sourceFilename, postKey);
+  const legacyHexSlug = await encryptSourceStemLegacyHexSlug(sourceFilename, postKey);
+  const legacyBase64Slug = await encryptSourceStemLegacySlug(sourceFilename, postKey);
   const targetFilename = `${targetSlug}.md`;
   const targetPath = join(OUT_DIR, targetFilename);
-  const existingOutput = await readExistingPublishedFile(
-    sourceFilename,
+  const existingOutput = await readExistingPublishedFile([
     targetPath,
-    join(OUT_DIR, `${legacySlug}.md`),
-  );
+    join(OUT_DIR, `${legacyHexSlug}.md`),
+    join(OUT_DIR, `${legacyBase64Slug}.md`),
+    join(OUT_DIR, sourceFilename),
+  ]);
   const resolvedTimestamps = resolveTimestamps({
     sourceFilename,
     sourceData: sourceFile.data,
@@ -582,6 +601,17 @@ const run = async (): Promise<void> => {
   };
   const expectedFiles = new Set<string>();
 
+  const rememberExpectedFile = (sourceFilename: string, targetFilename: string): void => {
+    if (expectedFiles.has(targetFilename)) {
+      throw new Error(
+        `[error] slug collision for ${targetFilename} while processing ${sourceFilename}; ` +
+        'increase slug length or rename one of the source posts.',
+      );
+    }
+
+    expectedFiles.add(targetFilename);
+  };
+
   for (const filename of files) {
     const result = await encryptPost(filename, now);
 
@@ -592,15 +622,15 @@ const run = async (): Promise<void> => {
     switch (result.status) {
       case 'created':
         summary.created += 1;
-        expectedFiles.add(result.targetFilename);
+        rememberExpectedFile(filename, result.targetFilename);
         break;
       case 'updated':
         summary.updated += 1;
-        expectedFiles.add(result.targetFilename);
+        rememberExpectedFile(filename, result.targetFilename);
         break;
       case 'unchanged':
         summary.unchanged += 1;
-        expectedFiles.add(result.targetFilename);
+        rememberExpectedFile(filename, result.targetFilename);
         break;
       case 'skipped':
         summary.skipped += 1;
